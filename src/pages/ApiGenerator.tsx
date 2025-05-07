@@ -148,42 +148,47 @@ const ApiGenerator = () => {
         console.log("Converted GitHub URL to raw content URL:", fetchUrl);
       }
       
-      // Add proxy for CORS if needed - in a production app, you'd use a server-side proxy
-      // or configure CORS properly on your API
-      const publicProxies = [
+      // Add multiple CORS proxies for fallback
+      const corsProxies = [
+        '', // Try direct first
         'https://api.allorigins.win/raw?url=',
-        'https://cors-anywhere.herokuapp.com/'
+        'https://cors-anywhere.herokuapp.com/',
+        'https://corsproxy.io/?',
+        'https://proxy.cors.sh/'
       ];
       
-      // Try without proxy first
       let response: Response | null = null;
       let proxyUsed = false;
+      let error: Error | null = null;
       
-      try {
-        response = await fetch(fetchUrl, { 
-          method: 'GET',
-          headers: { 'Accept': 'application/json' }
-        });
-      } catch (err) {
-        console.log("Direct fetch failed, trying with proxy...");
-        // Try with proxies if direct fetch fails
-        for (const proxy of publicProxies) {
-          try {
-            response = await fetch(`${proxy}${encodeURIComponent(fetchUrl)}`);
-            proxyUsed = true;
+      // Try each proxy until one works
+      for (const proxy of corsProxies) {
+        try {
+          const proxyUrl = proxy ? `${proxy}${encodeURIComponent(fetchUrl)}` : fetchUrl;
+          console.log(`Attempting fetch with ${proxy ? 'proxy: ' + proxy : 'direct fetch'}`);
+          
+          response = await fetch(proxyUrl, { 
+            method: 'GET',
+            headers: { 'Accept': 'application/json' }
+          });
+          
+          if (response.ok) {
+            proxyUsed = !!proxy;
+            console.log(`Successful fetch with ${proxyUsed ? 'proxy' : 'direct request'}`);
             break;
-          } catch (proxyErr) {
-            console.log(`Proxy ${proxy} failed:`, proxyErr);
-            // Continue to next proxy
           }
+        } catch (err) {
+          console.log(`Fetch attempt failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+          error = err instanceof Error ? err : new Error('Unknown fetch error');
+          // Continue to next proxy
         }
       }
       
       if (!response || !response.ok) {
         throw new Error(
-          `Failed to fetch API specification: ${response?.statusText || 'Network error'}. ${
-            proxyUsed ? '' : 'This could be due to CORS restrictions or the URL being inaccessible.'
-          }`
+          `Failed to fetch API specification: ${
+            error?.message || 'Network error'
+          }. This could be due to CORS restrictions or the URL being inaccessible.`
         );
       }
       
@@ -215,6 +220,7 @@ const ApiGenerator = () => {
         toast({
           title: "API Specification Imported",
           description: `The API specification '${processedData.apiName}' has been successfully imported. Review and customize as needed.`,
+          variant: "success"
         });
         
         // Switch to the manual tab to show the imported data
