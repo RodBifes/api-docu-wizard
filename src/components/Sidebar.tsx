@@ -8,8 +8,8 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { cn } from "@/lib/utils";
-import { useState } from "react";
-import { Link } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { Link, useLocation } from "react-router-dom";
 
 interface SidebarProps {
   className?: string;
@@ -93,7 +93,13 @@ const sidebarItems: NavItem[] = [
 ];
 
 const Sidebar = ({ className }: SidebarProps) => {
-  const [activeItem, setActiveItem] = useState("/endpoints/products");
+  const location = useLocation();
+  const [activeItem, setActiveItem] = useState(location.pathname);
+
+  useEffect(() => {
+    // Update active item when location changes
+    setActiveItem(location.pathname);
+  }, [location.pathname]);
 
   return (
     <div className={cn("border-r bg-background", className)}>
