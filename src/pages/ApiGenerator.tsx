@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
@@ -22,8 +23,23 @@ import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { AlertCircle, ArrowRight, FileText, Loader } from "lucide-react";
+import { 
+  AlertCircle, 
+  ArrowRight, 
+  FileText, 
+  Loader, 
+  Globe,
+  ShieldAlert,
+  InfoIcon 
+} from "lucide-react";
 import { processOpenApiSpec } from "@/lib/openapi-parser";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 // Form schema
 const formSchema = z.object({
@@ -64,6 +80,8 @@ const ApiGenerator = () => {
   const [endpointCount, setEndpointCount] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorDetails, setErrorDetails] = useState<string | null>(null);
+  const [showErrorDetails, setShowErrorDetails] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -113,13 +131,60 @@ const ApiGenerator = () => {
   const fetchApiDoc = async (data: UrlFormValues) => {
     setIsLoading(true);
     setError(null);
+    setErrorDetails(null);
     
     try {
-      // Fetch the API specification from the URL
-      const response = await fetch(data.apiUrl);
+      console.log("Fetching API specification from:", data.apiUrl);
       
-      if (!response.ok) {
-        throw new Error(`Failed to fetch API specification: ${response.statusText}`);
+      // Check if the URL is a GitHub URL without raw content
+      const url = data.apiUrl.trim();
+      let fetchUrl = url;
+      
+      if (url.includes('github.com') && !url.includes('raw.githubusercontent.com')) {
+        // Convert regular GitHub URL to raw content URL
+        fetchUrl = url
+          .replace('github.com', 'raw.githubusercontent.com')
+          .replace('/blob/', '/');
+        console.log("Converted GitHub URL to raw content URL:", fetchUrl);
+      }
+      
+      // Add proxy for CORS if needed - in a production app, you'd use a server-side proxy
+      // or configure CORS properly on your API
+      const publicProxies = [
+        'https://api.allorigins.win/raw?url=',
+        'https://cors-anywhere.herokuapp.com/'
+      ];
+      
+      // Try without proxy first
+      let response: Response | null = null;
+      let proxyUsed = false;
+      
+      try {
+        response = await fetch(fetchUrl, { 
+          method: 'GET',
+          headers: { 'Accept': 'application/json' }
+        });
+      } catch (err) {
+        console.log("Direct fetch failed, trying with proxy...");
+        // Try with proxies if direct fetch fails
+        for (const proxy of publicProxies) {
+          try {
+            response = await fetch(`${proxy}${encodeURIComponent(fetchUrl)}`);
+            proxyUsed = true;
+            break;
+          } catch (proxyErr) {
+            console.log(`Proxy ${proxy} failed:`, proxyErr);
+            // Continue to next proxy
+          }
+        }
+      }
+      
+      if (!response || !response.ok) {
+        throw new Error(
+          `Failed to fetch API specification: ${response?.statusText || 'Network error'}. ${
+            proxyUsed ? '' : 'This could be due to CORS restrictions or the URL being inaccessible.'
+          }`
+        );
       }
       
       const contentType = response.headers.get("content-type") || "";
@@ -149,18 +214,25 @@ const ApiGenerator = () => {
         
         toast({
           title: "API Specification Imported",
-          description: "The API specification has been successfully imported. Review and customize as needed.",
+          description: `The API specification '${processedData.apiName}' has been successfully imported. Review and customize as needed.`,
         });
+        
+        // Switch to the manual tab to show the imported data
+        document.querySelector('[data-state="inactive"][value="manual"]')?.dispatchEvent(
+          new MouseEvent('click', { bubbles: true })
+        );
       } else {
         throw new Error("Unsupported API specification format. Only OpenAPI/Swagger is currently supported.");
       }
     } catch (err) {
       console.error("Error fetching API spec:", err);
-      setError(err instanceof Error ? err.message : "An unknown error occurred");
+      const errorMessage = err instanceof Error ? err.message : "An unknown error occurred";
+      setError(errorMessage);
+      setErrorDetails(err instanceof Error ? err.stack || "" : JSON.stringify(err, null, 2));
       toast({
         variant: "destructive",
         title: "Error Importing API",
-        description: err instanceof Error ? err.message : "An unknown error occurred",
+        description: errorMessage,
       });
     } finally {
       setIsLoading(false);
@@ -253,7 +325,7 @@ const ApiGenerator = () => {
                                 />
                               </FormControl>
                               <FormDescription>
-                                Enter the URL of an OpenAPI/Swagger specification file
+                                Enter the URL of an OpenAPI/Swagger specification file. You can use GitHub URLs too.
                               </FormDescription>
                               <FormMessage />
                             </FormItem>
@@ -264,9 +336,57 @@ const ApiGenerator = () => {
                           <Alert variant="destructive" className="mt-4">
                             <AlertCircle className="h-4 w-4" />
                             <AlertTitle>Error</AlertTitle>
-                            <AlertDescription>{error}</AlertDescription>
+                            <AlertDescription className="space-y-2">
+                              <p>{error}</p>
+                              {error.includes("CORS") || error.includes("Failed to fetch") ? (
+                                <div className="mt-2 text-sm">
+                                  <p className="font-medium">Troubleshooting tips:</p>
+                                  <ul className="list-disc pl-5 mt-1 space-y-1">
+                                    <li>Try a public API specification URL like from <a href="https://github.com/OAI/OpenAPI-Specification/tree/main/examples/v3.0" target="_blank" rel="noopener noreferrer" className="underline">OpenAPI examples</a></li>
+                                    <li>Make sure the URL is accessible publicly</li>
+                                    <li>For GitHub repositories, use raw file URLs</li>
+                                  </ul>
+                                  <Button 
+                                    variant="outline" 
+                                    size="sm" 
+                                    className="mt-2" 
+                                    onClick={() => setShowErrorDetails(!showErrorDetails)}
+                                  >
+                                    {showErrorDetails ? "Hide" : "Show"} Technical Details
+                                  </Button>
+                                </div>
+                              ) : null}
+                              
+                              {showErrorDetails && errorDetails && (
+                                <pre className="mt-2 p-2 bg-black/20 rounded text-xs overflow-auto max-h-40">
+                                  {errorDetails}
+                                </pre>
+                              )}
+                              
+                              <div className="flex space-x-2 mt-2">
+                                <Button 
+                                  variant="outline" 
+                                  size="sm" 
+                                  className="flex items-center"
+                                  onClick={() => {
+                                    urlForm.setValue("apiUrl", "https://raw.githubusercontent.com/OAI/OpenAPI-Specification/main/examples/v3.0/petstore.json");
+                                  }}
+                                >
+                                  <Globe className="mr-1 h-3 w-3" />
+                                  Use Petstore Example
+                                </Button>
+                              </div>
+                            </AlertDescription>
                           </Alert>
                         )}
+                        
+                        <Alert variant="info" className="mt-4">
+                          <InfoIcon className="h-4 w-4" />
+                          <AlertTitle>Supported Formats</AlertTitle>
+                          <AlertDescription>
+                            Currently supports OpenAPI/Swagger specification formats. The URL must point to a JSON file that's publicly accessible.
+                          </AlertDescription>
+                        </Alert>
                         
                         <Button type="submit" disabled={isLoading} className="w-full">
                           {isLoading ? (
@@ -574,6 +694,23 @@ const ApiGenerator = () => {
           </div>
         </main>
       </div>
+      
+      {/* Error details dialog */}
+      <Dialog open={showErrorDetails} onOpenChange={setShowErrorDetails}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Error Details</DialogTitle>
+            <DialogDescription>
+              Technical information about the error that occurred.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-2">
+            <pre className="p-4 bg-black/20 rounded text-xs overflow-auto max-h-80">
+              {errorDetails || "No additional details available"}
+            </pre>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

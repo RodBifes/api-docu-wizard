@@ -94,3 +94,16 @@
 .method-delete {
   @apply bg-red-500 text-white;
 }
+
+/* Additional alert styles */
+.dark .alert-info {
+  @apply bg-blue-950/20 border-blue-500/30 text-blue-400;
+}
+
+.dark .alert-warning {
+  @apply bg-yellow-950/20 border-yellow-500/30 text-yellow-400;
+}
+
+.dark .alert-success {
+  @apply bg-green-950/20 border-green-500/30 text-green-400;
+}
