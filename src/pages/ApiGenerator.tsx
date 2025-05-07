@@ -136,6 +136,12 @@ const ApiGenerator = () => {
     try {
       console.log("Fetching API specification from:", data.apiUrl);
       
+      // Updated Petstore URL to a working version
+      if (data.apiUrl.includes("petstore.json")) {
+        // Use a known working version of the petstore spec
+        data.apiUrl = "https://petstore3.swagger.io/api/v3/openapi.json";
+      }
+      
       // Check if the URL is a GitHub URL without raw content
       const url = data.apiUrl.trim();
       let fetchUrl = url;
@@ -152,7 +158,6 @@ const ApiGenerator = () => {
       const corsProxies = [
         '', // Try direct first
         'https://api.allorigins.win/raw?url=',
-        'https://cors-anywhere.herokuapp.com/',
         'https://corsproxy.io/?',
         'https://proxy.cors.sh/'
       ];
@@ -160,6 +165,7 @@ const ApiGenerator = () => {
       let response: Response | null = null;
       let proxyUsed = false;
       let error: Error | null = null;
+      let responseText: string | null = null;
       
       // Try each proxy until one works
       for (const proxy of corsProxies) {
@@ -173,6 +179,9 @@ const ApiGenerator = () => {
           });
           
           if (response.ok) {
+            responseText = await response.text();
+            // Try parsing to validate it's JSON before proceeding
+            JSON.parse(responseText);
             proxyUsed = !!proxy;
             console.log(`Successful fetch with ${proxyUsed ? 'proxy' : 'direct request'}`);
             break;
@@ -184,7 +193,7 @@ const ApiGenerator = () => {
         }
       }
       
-      if (!response || !response.ok) {
+      if (!response || !response.ok || !responseText) {
         throw new Error(
           `Failed to fetch API specification: ${
             error?.message || 'Network error'
@@ -192,18 +201,13 @@ const ApiGenerator = () => {
         );
       }
       
-      const contentType = response.headers.get("content-type") || "";
+      // Parse JSON response
       let apiSpec;
-      
-      if (contentType.includes("application/json")) {
-        apiSpec = await response.json();
-      } else {
-        const textContent = await response.text();
-        try {
-          apiSpec = JSON.parse(textContent);
-        } catch (e) {
-          throw new Error("Unable to parse API specification: Not a valid JSON");
-        }
+      try {
+        apiSpec = JSON.parse(responseText);
+      } catch (e) {
+        console.error("JSON parsing error:", e);
+        throw new Error("Unable to parse API specification: Not a valid JSON");
       }
       
       // Process the API specification
@@ -325,7 +329,7 @@ const ApiGenerator = () => {
                               <FormLabel>API Specification URL</FormLabel>
                               <FormControl>
                                 <Input
-                                  placeholder="https://raw.githubusercontent.com/OAI/OpenAPI-Specification/main/examples/v3.0/petstore.json"
+                                  placeholder="https://petstore3.swagger.io/api/v3/openapi.json"
                                   {...field}
                                   disabled={isLoading}
                                 />
@@ -338,14 +342,14 @@ const ApiGenerator = () => {
                           )}
                         />
                         
-                        {/* Petstore Example Button - Now outside the error section so it's always visible */}
+                        {/* Petstore Example Button with updated URL */}
                         <div className="flex justify-center mb-4">
                           <Button 
                             variant="outline" 
                             type="button"
                             className="flex items-center gap-2"
                             onClick={() => {
-                              urlForm.setValue("apiUrl", "https://raw.githubusercontent.com/OAI/OpenAPI-Specification/main/examples/v3.0/petstore.json");
+                              urlForm.setValue("apiUrl", "https://petstore3.swagger.io/api/v3/openapi.json");
                             }}
                           >
                             <Globe className="h-4 w-4" />
@@ -723,4 +727,3 @@ const ApiGenerator = () => {
 };
 
 export default ApiGenerator;
-
