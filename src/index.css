@@ -107,3 +107,12 @@
 .dark .alert-success {
   @apply bg-green-950/20 border-green-500/30 text-green-400;
 }
+
+/* Toast success styles */
+.toast-success {
+  @apply border-green-500/50 bg-green-500/10 text-green-600;
+}
+
+.dark .toast-success {
+  @apply border-green-500/30 bg-green-950/20 text-green-400;
+}
