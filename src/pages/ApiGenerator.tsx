@@ -332,6 +332,21 @@ const ApiGenerator = () => {
                           )}
                         />
                         
+                        {/* Petstore Example Button - Now outside the error section so it's always visible */}
+                        <div className="flex justify-center mb-4">
+                          <Button 
+                            variant="outline" 
+                            type="button"
+                            className="flex items-center gap-2"
+                            onClick={() => {
+                              urlForm.setValue("apiUrl", "https://raw.githubusercontent.com/OAI/OpenAPI-Specification/main/examples/v3.0/petstore.json");
+                            }}
+                          >
+                            <Globe className="h-4 w-4" />
+                            Use Petstore Example URL
+                          </Button>
+                        </div>
+                        
                         {error && (
                           <Alert variant="destructive" className="mt-4">
                             <AlertCircle className="h-4 w-4" />
@@ -362,20 +377,6 @@ const ApiGenerator = () => {
                                   {errorDetails}
                                 </pre>
                               )}
-                              
-                              <div className="flex space-x-2 mt-2">
-                                <Button 
-                                  variant="outline" 
-                                  size="sm" 
-                                  className="flex items-center"
-                                  onClick={() => {
-                                    urlForm.setValue("apiUrl", "https://raw.githubusercontent.com/OAI/OpenAPI-Specification/main/examples/v3.0/petstore.json");
-                                  }}
-                                >
-                                  <Globe className="mr-1 h-3 w-3" />
-                                  Use Petstore Example
-                                </Button>
-                              </div>
                             </AlertDescription>
                           </Alert>
                         )}
@@ -716,3 +717,4 @@ const ApiGenerator = () => {
 };
 
 export default ApiGenerator;
+
