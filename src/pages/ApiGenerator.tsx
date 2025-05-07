@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
@@ -9,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import {
   Form,
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -20,6 +20,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { AlertCircle, ArrowRight, FileText, Loader } from "lucide-react";
+import { processOpenApiSpec } from "@/lib/openapi-parser";
 
 // Form schema
 const formSchema = z.object({
@@ -47,14 +51,23 @@ const formSchema = z.object({
   ).default([]),
 });
 
+// URL Input schema
+const urlSchema = z.object({
+  apiUrl: z.string().url("Please enter a valid URL"),
+});
+
 type FormValues = z.infer<typeof formSchema>;
+type UrlFormValues = z.infer<typeof urlSchema>;
 
 const ApiGenerator = () => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [endpointCount, setEndpointCount] = useState(1);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
 
+  // Form for manual input
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -76,6 +89,14 @@ const ApiGenerator = () => {
     },
   });
 
+  // Form for URL input
+  const urlForm = useForm<UrlFormValues>({
+    resolver: zodResolver(urlSchema),
+    defaultValues: {
+      apiUrl: "",
+    },
+  });
+
   const onSubmit = (data: FormValues) => {
     console.log("Form data:", data);
     toast({
@@ -87,6 +108,63 @@ const ApiGenerator = () => {
     // to pass the data to the documentation page
     // For now, we'll just navigate to the main page
     navigate("/");
+  };
+
+  const fetchApiDoc = async (data: UrlFormValues) => {
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      // Fetch the API specification from the URL
+      const response = await fetch(data.apiUrl);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch API specification: ${response.statusText}`);
+      }
+      
+      const contentType = response.headers.get("content-type") || "";
+      let apiSpec;
+      
+      if (contentType.includes("application/json")) {
+        apiSpec = await response.json();
+      } else {
+        const textContent = await response.text();
+        try {
+          apiSpec = JSON.parse(textContent);
+        } catch (e) {
+          throw new Error("Unable to parse API specification: Not a valid JSON");
+        }
+      }
+      
+      // Process the API specification
+      console.log("Fetched API spec:", apiSpec);
+      
+      // Check if it's an OpenAPI specification
+      if (apiSpec.openapi || apiSpec.swagger) {
+        // Process OpenAPI spec and convert to our format
+        const processedData = processOpenApiSpec(apiSpec);
+        
+        // Set the form values
+        form.reset(processedData);
+        
+        toast({
+          title: "API Specification Imported",
+          description: "The API specification has been successfully imported. Review and customize as needed.",
+        });
+      } else {
+        throw new Error("Unsupported API specification format. Only OpenAPI/Swagger is currently supported.");
+      }
+    } catch (err) {
+      console.error("Error fetching API spec:", err);
+      setError(err instanceof Error ? err.message : "An unknown error occurred");
+      toast({
+        variant: "destructive",
+        title: "Error Importing API",
+        description: err instanceof Error ? err.message : "An unknown error occurred",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const addEndpoint = () => {
@@ -147,262 +225,323 @@ const ApiGenerator = () => {
           <div className="mx-auto max-w-4xl">
             <h1 className="text-3xl font-bold mb-8">Generate API Documentation</h1>
             
-            <Card>
-              <CardHeader>
-                <CardTitle>API Details</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Form {...form}>
-                  <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <FormField
-                        control={form.control}
-                        name="apiName"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>API Name</FormLabel>
-                            <FormControl>
-                              <Input placeholder="Products API" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
+            <Tabs defaultValue="url" className="mb-6">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="url">Import from URL</TabsTrigger>
+                <TabsTrigger value="manual">Create Manually</TabsTrigger>
+              </TabsList>
+              
+              <TabsContent value="url" className="mt-4 space-y-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Import API from URL</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <Form {...urlForm}>
+                      <form onSubmit={urlForm.handleSubmit(fetchApiDoc)} className="space-y-6">
+                        <FormField
+                          control={urlForm.control}
+                          name="apiUrl"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>API Specification URL</FormLabel>
+                              <FormControl>
+                                <Input
+                                  placeholder="https://raw.githubusercontent.com/OAI/OpenAPI-Specification/main/examples/v3.0/petstore.json"
+                                  {...field}
+                                  disabled={isLoading}
+                                />
+                              </FormControl>
+                              <FormDescription>
+                                Enter the URL of an OpenAPI/Swagger specification file
+                              </FormDescription>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        
+                        {error && (
+                          <Alert variant="destructive" className="mt-4">
+                            <AlertCircle className="h-4 w-4" />
+                            <AlertTitle>Error</AlertTitle>
+                            <AlertDescription>{error}</AlertDescription>
+                          </Alert>
                         )}
-                      />
-                      
-                      <FormField
-                        control={form.control}
-                        name="version"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Version</FormLabel>
-                            <FormControl>
-                              <Input placeholder="v1.0" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </div>
-                    
-                    <FormField
-                      control={form.control}
-                      name="baseUrl"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Base URL</FormLabel>
-                          <FormControl>
-                            <Input 
-                              placeholder="https://api.example.com/v1" 
-                              {...field} 
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    
-                    <FormField
-                      control={form.control}
-                      name="description"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>API Description</FormLabel>
-                          <FormControl>
-                            <Textarea 
-                              placeholder="This API provides endpoints to manage products..." 
-                              className="min-h-[100px]"
-                              {...field} 
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    
-                    <div className="space-y-8">
-                      <div className="flex justify-between items-center">
-                        <h3 className="text-lg font-semibold">Endpoints</h3>
-                        <Button 
-                          type="button" 
-                          variant="outline" 
-                          onClick={addEndpoint}
-                        >
-                          Add Endpoint
+                        
+                        <Button type="submit" disabled={isLoading} className="w-full">
+                          {isLoading ? (
+                            <>
+                              <Loader className="mr-2 h-4 w-4 animate-spin" /> Importing...
+                            </>
+                          ) : (
+                            <>
+                              <FileText className="mr-2 h-4 w-4" /> Import API Documentation
+                            </>
+                          )}
                         </Button>
-                      </div>
-                      
-                      {Array.from({ length: endpointCount }).map((_, index) => (
-                        <Card key={index} className="border border-border p-4">
-                          <div className="space-y-6">
-                            <div className="grid grid-cols-2 gap-4">
-                              <FormField
-                                control={form.control}
-                                name={`endpoints.${index}.method`}
-                                render={({ field }) => (
-                                  <FormItem>
-                                    <FormLabel>Method</FormLabel>
-                                    <FormControl>
-                                      <select
-                                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
-                                        value={field.value}
-                                        onChange={field.onChange}
-                                      >
-                                        <option value="GET">GET</option>
-                                        <option value="POST">POST</option>
-                                        <option value="PUT">PUT</option>
-                                        <option value="DELETE">DELETE</option>
-                                      </select>
-                                    </FormControl>
-                                    <FormMessage />
-                                  </FormItem>
-                                )}
-                              />
-                              
-                              <FormField
-                                control={form.control}
-                                name={`endpoints.${index}.path`}
-                                render={({ field }) => (
-                                  <FormItem>
-                                    <FormLabel>Path</FormLabel>
-                                    <FormControl>
-                                      <Input placeholder="/products" {...field} />
-                                    </FormControl>
-                                    <FormMessage />
-                                  </FormItem>
-                                )}
-                              />
-                            </div>
-                            
-                            <FormField
-                              control={form.control}
-                              name={`endpoints.${index}.title`}
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Title</FormLabel>
-                                  <FormControl>
-                                    <Input placeholder="Get All Products" {...field} />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                            
-                            <FormField
-                              control={form.control}
-                              name={`endpoints.${index}.description`}
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Description</FormLabel>
-                                  <FormControl>
-                                    <Textarea 
-                                      placeholder="Returns a list of all products" 
-                                      {...field} 
-                                    />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                            
-                            <FormField
-                              control={form.control}
-                              name={`endpoints.${index}.requiresAuth`}
-                              render={({ field }) => (
-                                <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md">
-                                  <FormControl>
-                                    <Checkbox
-                                      checked={field.value}
-                                      onCheckedChange={field.onChange}
-                                    />
-                                  </FormControl>
-                                  <div className="space-y-1 leading-none">
-                                    <FormLabel>Requires Authentication</FormLabel>
-                                  </div>
-                                </FormItem>
-                              )}
-                            />
-                            
-                            <div>
-                              <div className="flex justify-between items-center mb-3">
-                                <FormLabel>Parameters</FormLabel>
-                                <Button 
-                                  type="button" 
-                                  variant="outline" 
-                                  size="sm"
-                                  onClick={() => addParameter(index)}
-                                >
-                                  Add Parameter
-                                </Button>
-                              </div>
-                              
-                              {form.getValues(`endpoints.${index}.parameters`)?.map((_, paramIndex) => (
-                                <div key={paramIndex} className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3">
+                      </form>
+                    </Form>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+              
+              <TabsContent value="manual" className="mt-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>API Details</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <Form {...form}>
+                      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <FormField
+                            control={form.control}
+                            name="apiName"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>API Name</FormLabel>
+                                <FormControl>
+                                  <Input placeholder="Products API" {...field} />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                          
+                          <FormField
+                            control={form.control}
+                            name="version"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Version</FormLabel>
+                                <FormControl>
+                                  <Input placeholder="v1.0" {...field} />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                        </div>
+                        
+                        <FormField
+                          control={form.control}
+                          name="baseUrl"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Base URL</FormLabel>
+                              <FormControl>
+                                <Input 
+                                  placeholder="https://api.example.com/v1" 
+                                  {...field} 
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        
+                        <FormField
+                          control={form.control}
+                          name="description"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>API Description</FormLabel>
+                              <FormControl>
+                                <Textarea 
+                                  placeholder="This API provides endpoints to manage products..." 
+                                  className="min-h-[100px]"
+                                  {...field} 
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        
+                        <div className="space-y-8">
+                          <div className="flex justify-between items-center">
+                            <h3 className="text-lg font-semibold">Endpoints</h3>
+                            <Button 
+                              type="button" 
+                              variant="outline" 
+                              onClick={addEndpoint}
+                            >
+                              Add Endpoint
+                            </Button>
+                          </div>
+                          
+                          {Array.from({ length: endpointCount }).map((_, index) => (
+                            <Card key={index} className="border border-border p-4">
+                              <div className="space-y-6">
+                                <div className="grid grid-cols-2 gap-4">
                                   <FormField
                                     control={form.control}
-                                    name={`endpoints.${index}.parameters.${paramIndex}.name`}
+                                    name={`endpoints.${index}.method`}
                                     render={({ field }) => (
                                       <FormItem>
+                                        <FormLabel>Method</FormLabel>
                                         <FormControl>
-                                          <Input placeholder="Name" {...field} />
+                                          <select
+                                            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
+                                            value={field.value}
+                                            onChange={field.onChange}
+                                          >
+                                            <option value="GET">GET</option>
+                                            <option value="POST">POST</option>
+                                            <option value="PUT">PUT</option>
+                                            <option value="DELETE">DELETE</option>
+                                          </select>
                                         </FormControl>
+                                        <FormMessage />
                                       </FormItem>
                                     )}
                                   />
                                   
                                   <FormField
                                     control={form.control}
-                                    name={`endpoints.${index}.parameters.${paramIndex}.type`}
+                                    name={`endpoints.${index}.path`}
                                     render={({ field }) => (
                                       <FormItem>
+                                        <FormLabel>Path</FormLabel>
                                         <FormControl>
-                                          <Input placeholder="Type" {...field} />
+                                          <Input placeholder="/products" {...field} />
                                         </FormControl>
-                                      </FormItem>
-                                    )}
-                                  />
-                                  
-                                  <FormField
-                                    control={form.control}
-                                    name={`endpoints.${index}.parameters.${paramIndex}.description`}
-                                    render={({ field }) => (
-                                      <FormItem>
-                                        <FormControl>
-                                          <Input placeholder="Description" {...field} />
-                                        </FormControl>
-                                      </FormItem>
-                                    )}
-                                  />
-                                  
-                                  <FormField
-                                    control={form.control}
-                                    name={`endpoints.${index}.parameters.${paramIndex}.required`}
-                                    render={({ field }) => (
-                                      <FormItem className="flex flex-row items-center space-x-3 space-y-0">
-                                        <FormControl>
-                                          <Checkbox
-                                            checked={field.value}
-                                            onCheckedChange={field.onChange}
-                                          />
-                                        </FormControl>
-                                        <div className="space-y-1 leading-none">
-                                          <FormLabel>Required</FormLabel>
-                                        </div>
+                                        <FormMessage />
                                       </FormItem>
                                     )}
                                   />
                                 </div>
-                              ))}
-                            </div>
-                            
-                            <FormField
-                              control={form.control}
-                              name={`endpoints.${index}.responseExample`}
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Response Example (JSON)</FormLabel>
-                                  <FormControl>
-                                    <Textarea 
-                                      placeholder='{
+                                
+                                <FormField
+                                  control={form.control}
+                                  name={`endpoints.${index}.title`}
+                                  render={({ field }) => (
+                                    <FormItem>
+                                      <FormLabel>Title</FormLabel>
+                                      <FormControl>
+                                        <Input placeholder="Get All Products" {...field} />
+                                      </FormControl>
+                                      <FormMessage />
+                                    </FormItem>
+                                  )}
+                                />
+                                
+                                <FormField
+                                  control={form.control}
+                                  name={`endpoints.${index}.description`}
+                                  render={({ field }) => (
+                                    <FormItem>
+                                      <FormLabel>Description</FormLabel>
+                                      <FormControl>
+                                        <Textarea 
+                                          placeholder="Returns a list of all products" 
+                                          {...field} 
+                                        />
+                                      </FormControl>
+                                      <FormMessage />
+                                    </FormItem>
+                                  )}
+                                />
+                                
+                                <FormField
+                                  control={form.control}
+                                  name={`endpoints.${index}.requiresAuth`}
+                                  render={({ field }) => (
+                                    <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md">
+                                      <FormControl>
+                                        <Checkbox
+                                          checked={field.value}
+                                          onCheckedChange={field.onChange}
+                                        />
+                                      </FormControl>
+                                      <div className="space-y-1 leading-none">
+                                        <FormLabel>Requires Authentication</FormLabel>
+                                      </div>
+                                    </FormItem>
+                                  )}
+                                />
+                                
+                                <div>
+                                  <div className="flex justify-between items-center mb-3">
+                                    <FormLabel>Parameters</FormLabel>
+                                    <Button 
+                                      type="button" 
+                                      variant="outline" 
+                                      size="sm"
+                                      onClick={() => addParameter(index)}
+                                    >
+                                      Add Parameter
+                                    </Button>
+                                  </div>
+                                  
+                                  {form.getValues(`endpoints.${index}.parameters`)?.map((_, paramIndex) => (
+                                    <div key={paramIndex} className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3">
+                                      <FormField
+                                        control={form.control}
+                                        name={`endpoints.${index}.parameters.${paramIndex}.name`}
+                                        render={({ field }) => (
+                                          <FormItem>
+                                            <FormControl>
+                                              <Input placeholder="Name" {...field} />
+                                            </FormControl>
+                                          </FormItem>
+                                        )}
+                                      />
+                                      
+                                      <FormField
+                                        control={form.control}
+                                        name={`endpoints.${index}.parameters.${paramIndex}.type`}
+                                        render={({ field }) => (
+                                          <FormItem>
+                                            <FormControl>
+                                              <Input placeholder="Type" {...field} />
+                                            </FormControl>
+                                          </FormItem>
+                                        )}
+                                      />
+                                      
+                                      <FormField
+                                        control={form.control}
+                                        name={`endpoints.${index}.parameters.${paramIndex}.description`}
+                                        render={({ field }) => (
+                                          <FormItem>
+                                            <FormControl>
+                                              <Input placeholder="Description" {...field} />
+                                            </FormControl>
+                                          </FormItem>
+                                        )}
+                                      />
+                                      
+                                      <FormField
+                                        control={form.control}
+                                        name={`endpoints.${index}.parameters.${paramIndex}.required`}
+                                        render={({ field }) => (
+                                          <FormItem className="flex flex-row items-center space-x-3 space-y-0">
+                                            <FormControl>
+                                              <Checkbox
+                                                checked={field.value}
+                                                onCheckedChange={field.onChange}
+                                              />
+                                            </FormControl>
+                                            <div className="space-y-1 leading-none">
+                                              <FormLabel>Required</FormLabel>
+                                            </div>
+                                          </FormItem>
+                                        )}
+                                      />
+                                    </div>
+                                  ))}
+                                </div>
+                                
+                                <FormField
+                                  control={form.control}
+                                  name={`endpoints.${index}.responseExample`}
+                                  render={({ field }) => (
+                                    <FormItem>
+                                      <FormLabel>Response Example (JSON)</FormLabel>
+                                      <FormControl>
+                                        <Textarea 
+                                          placeholder='{
   "products": [
     {
       "id": "123",
@@ -410,24 +549,28 @@ const ApiGenerator = () => {
     }
   ]
 }'
-                                      className="min-h-[150px] font-mono"
-                                      {...field} 
-                                    />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                          </div>
-                        </Card>
-                      ))}
-                    </div>
-                    
-                    <Button type="submit" className="w-full">Generate Documentation</Button>
-                  </form>
-                </Form>
-              </CardContent>
-            </Card>
+                                          className="min-h-[150px] font-mono"
+                                          {...field} 
+                                        />
+                                      </FormControl>
+                                      <FormMessage />
+                                    </FormItem>
+                                  )}
+                                />
+                              </div>
+                            </Card>
+                          ))}
+                        </div>
+                        
+                        <Button type="submit" className="w-full">
+                          <ArrowRight className="mr-2 h-4 w-4" /> Generate Documentation
+                        </Button>
+                      </form>
+                    </Form>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            </Tabs>
           </div>
         </main>
       </div>
