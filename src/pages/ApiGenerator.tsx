@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
@@ -30,9 +29,14 @@ import {
   Loader, 
   Globe,
   ShieldAlert,
-  InfoIcon 
+  InfoIcon,
+  Eye,
+  Download,
+  Code
 } from "lucide-react";
 import { processOpenApiSpec } from "@/lib/openapi-parser";
+import { generateHtmlDocumentation } from "@/lib/documentation-generator";
+import DocPreview from "@/components/DocPreview";
 import {
   Dialog,
   DialogContent,
@@ -82,6 +86,8 @@ const ApiGenerator = () => {
   const [error, setError] = useState<string | null>(null);
   const [errorDetails, setErrorDetails] = useState<string | null>(null);
   const [showErrorDetails, setShowErrorDetails] = useState(false);
+  const [generatedHtml, setGeneratedHtml] = useState<string | null>(null);
+  const [showPreview, setShowPreview] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -117,15 +123,27 @@ const ApiGenerator = () => {
 
   const onSubmit = (data: FormValues) => {
     console.log("Form data:", data);
-    toast({
-      title: "API Documentation Generated",
-      description: "Your API documentation has been generated successfully.",
-    });
     
-    // In a real app, you would likely use a context or state management 
-    // to pass the data to the documentation page
-    // For now, we'll just navigate to the main page
-    navigate("/");
+    try {
+      // Generate HTML documentation
+      const html = generateHtmlDocumentation(data);
+      setGeneratedHtml(html);
+      
+      toast({
+        title: "API Documentation Generated",
+        description: "Your API documentation has been generated successfully.",
+      });
+      
+      // Show preview automatically
+      setShowPreview(true);
+    } catch (err) {
+      console.error("Error generating documentation:", err);
+      toast({
+        variant: "destructive",
+        title: "Generation Error",
+        description: "Failed to generate documentation. Please check your inputs.",
+      });
+    }
   };
 
   const fetchApiDoc = async (data: UrlFormValues) => {
@@ -284,6 +302,50 @@ const ApiGenerator = () => {
     form.setValue("endpoints", updatedEndpoints);
   };
 
+  const downloadHtml = () => {
+    if (!generatedHtml) return;
+    
+    // Create a blob with the HTML content
+    const blob = new Blob([generatedHtml], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    
+    // Create a temporary link and trigger download
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'api-documentation.html';
+    document.body.appendChild(a);
+    a.click();
+    
+    // Clean up
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    toast({
+      title: "Documentation Downloaded",
+      description: "Your HTML documentation has been downloaded.",
+    });
+  };
+
+  const copyHtmlToClipboard = () => {
+    if (!generatedHtml) return;
+    
+    navigator.clipboard.writeText(generatedHtml)
+      .then(() => {
+        toast({
+          title: "HTML Copied",
+          description: "The HTML code has been copied to your clipboard.",
+        });
+      })
+      .catch(err => {
+        console.error("Failed to copy HTML:", err);
+        toast({
+          variant: "destructive",
+          title: "Copy Failed",
+          description: "Failed to copy HTML to clipboard.",
+        });
+      });
+  };
+
   return (
     <div className="flex min-h-screen flex-col dark">
       <Navbar />
@@ -303,7 +365,7 @@ const ApiGenerator = () => {
         >
           {sidebarOpen ? "←" : "→"}
         </Button>
-        <main className="flex-1 p-6 md:p-8">
+        <main className="flex-1 p-6 md:p-8 overflow-y-auto">
           <div className="mx-auto max-w-4xl">
             <h1 className="text-3xl font-bold mb-8">Generate API Documentation</h1>
             
@@ -701,6 +763,36 @@ const ApiGenerator = () => {
                   </CardContent>
                 </Card>
               </TabsContent>
+              
+              {generatedHtml && (
+                <TabsContent value="preview" className="mt-4">
+                  <Card className="mb-6">
+                    <CardHeader>
+                      <CardTitle className="text-2xl font-bold">Documentation Preview</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="mb-4 flex flex-wrap gap-2">
+                        <Button 
+                          onClick={downloadHtml}
+                          className="flex items-center gap-2"
+                        >
+                          <Download className="h-4 w-4" />
+                          Download HTML
+                        </Button>
+                        <Button 
+                          onClick={copyHtmlToClipboard}
+                          variant="outline" 
+                          className="flex items-center gap-2"
+                        >
+                          <Code className="h-4 w-4" />
+                          Copy HTML Code
+                        </Button>
+                      </div>
+                      <DocPreview html={generatedHtml} />
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+              )}
             </Tabs>
           </div>
         </main>
@@ -719,6 +811,38 @@ const ApiGenerator = () => {
             <pre className="p-4 bg-black/20 rounded text-xs overflow-auto max-h-80">
               {errorDetails || "No additional details available"}
             </pre>
+          </div>
+        </DialogContent>
+      </Dialog>
+      
+      {/* Preview dialog */}
+      <Dialog open={showPreview} onOpenChange={setShowPreview}>
+        <DialogContent className="max-w-5xl h-[90vh]">
+          <DialogHeader>
+            <DialogTitle>Documentation Preview</DialogTitle>
+            <DialogDescription>
+              Preview how your documentation will look when published.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex-1 overflow-hidden mt-4">
+            {generatedHtml && <DocPreview html={generatedHtml} />}
+          </div>
+          <div className="mt-4 flex justify-end gap-2">
+            <Button 
+              onClick={downloadHtml}
+              className="flex items-center gap-2"
+            >
+              <Download className="h-4 w-4" />
+              Download HTML
+            </Button>
+            <Button 
+              onClick={copyHtmlToClipboard}
+              variant="outline" 
+              className="flex items-center gap-2"
+            >
+              <Code className="h-4 w-4" />
+              Copy HTML Code
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

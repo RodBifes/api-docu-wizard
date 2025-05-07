@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useLocation } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { useEffect } from "react";
+import { Button } from "@/components/ui/button";
 
 interface PlaceholderPageProps {
   title?: string;
@@ -36,6 +37,14 @@ const PlaceholderPage: React.FC<PlaceholderPageProps> = ({ title }) => {
         >
           <Sidebar className="h-[calc(100vh-4rem)]" />
         </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => setSidebarOpen(!sidebarOpen)}
+          className="fixed left-3 top-20 md:hidden"
+        >
+          {sidebarOpen ? "←" : "→"}
+        </Button>
         <main className="flex-1 p-6 md:p-8">
           <Card className="mb-6">
             <CardHeader>
