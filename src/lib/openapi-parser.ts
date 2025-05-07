@@ -1,12 +1,12 @@
 
-interface Parameter {
+export interface Parameter {
   name: string;
   type: string;
   description: string;
   required: boolean;
 }
 
-interface Endpoint {
+export interface Endpoint {
   method: "GET" | "POST" | "PUT" | "DELETE";
   path: string;
   title: string;
@@ -16,7 +16,7 @@ interface Endpoint {
   responseExample: string;
 }
 
-interface ApiDocumentation {
+export interface ApiDocumentation {
   apiName: string;
   baseUrl: string;
   description: string;
