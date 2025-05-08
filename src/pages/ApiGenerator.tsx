@@ -35,7 +35,7 @@ import {
   Download,
   Code
 } from "lucide-react";
-import { processOpenApiSpec, ApiDocumentation } from "@/lib/openapi-parser";
+import { processOpenApiSpec, ApiDocumentation, Endpoint, Parameter } from "@/lib/openapi-parser";
 import { generateHtmlDocumentation } from "@/lib/documentation-generator";
 import DocPreview from "@/components/DocPreview";
 import {
@@ -132,15 +132,25 @@ const ApiGenerator = () => {
         baseUrl: data.baseUrl || "",
         description: data.description || "",
         version: data.version || "1.0.0",
-        endpoints: data.endpoints.map(endpoint => ({
-          method: endpoint.method,
-          path: endpoint.path,
-          title: endpoint.title,
-          description: endpoint.description,
-          requiresAuth: endpoint.requiresAuth,
-          parameters: endpoint.parameters || [],
-          responseExample: endpoint.responseExample || "",
-        }))
+        endpoints: data.endpoints.map(endpoint => {
+          // Ensure all parameters have required fields
+          const parameters: Parameter[] = endpoint.parameters.map(param => ({
+            name: param.name || "",  // Ensuring name is not optional
+            type: param.type || "string",
+            description: param.description || "",
+            required: param.required || false
+          }));
+          
+          return {
+            method: endpoint.method,
+            path: endpoint.path || "/",
+            title: endpoint.title || "",
+            description: endpoint.description || "",
+            requiresAuth: endpoint.requiresAuth || false,
+            parameters: parameters,
+            responseExample: endpoint.responseExample || "",
+          } as Endpoint;
+        })
       };
       
       // Generate HTML documentation with properly typed data
