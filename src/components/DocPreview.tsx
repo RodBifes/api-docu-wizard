@@ -21,9 +21,9 @@ const DocPreview: React.FC<DocPreviewProps> = ({ html }) => {
           if (iframeDoc) {
             // Allow time for content to render
             setTimeout(() => {
-              const height = iframeDoc.documentElement.scrollHeight;
-              iframe.style.height = `${height}px`;
-            }, 100);
+              iframe.style.height = `${Math.max(600, iframeDoc.documentElement.scrollHeight)}px`;
+              console.log("Resized iframe to:", iframe.style.height);
+            }, 200);
           }
         } catch (e) {
           console.error("Error resizing iframe:", e);
@@ -34,7 +34,7 @@ const DocPreview: React.FC<DocPreviewProps> = ({ html }) => {
       iframe.onload = resizeIframe;
       
       // Apply initial height after a short delay
-      setTimeout(resizeIframe, 200);
+      setTimeout(resizeIframe, 300);
     }
   }, [html]);
 
@@ -68,6 +68,8 @@ const DocPreview: React.FC<DocPreviewProps> = ({ html }) => {
                   }
                 });
               });
+              
+              console.log("DocPreview iframe loaded with content");
             }
           } catch (e) {
             console.error("Error setting up iframe navigation:", e);

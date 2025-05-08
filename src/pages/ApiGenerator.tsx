@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
@@ -89,6 +88,7 @@ const ApiGenerator = () => {
   const [showErrorDetails, setShowErrorDetails] = useState(false);
   const [generatedHtml, setGeneratedHtml] = useState<string | null>(null);
   const [showPreview, setShowPreview] = useState(false);
+  const [activeTab, setActiveTab] = useState("url");
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -123,19 +123,19 @@ const ApiGenerator = () => {
   });
 
   const onSubmit = (data: FormValues) => {
-    console.log("Form data:", data);
+    console.log("Form data submitted:", data);
     
     try {
       // Ensure all required properties are present to match ApiDocumentation interface
       const documentationData: ApiDocumentation = {
-        apiName: data.apiName || "API Documentation", // Provide default if empty
+        apiName: data.apiName || "API Documentation",
         baseUrl: data.baseUrl || "",
         description: data.description || "",
         version: data.version || "1.0.0",
         endpoints: data.endpoints.map(endpoint => {
           // Ensure all parameters have required fields
-          const parameters: Parameter[] = endpoint.parameters.map(param => ({
-            name: param.name || "",  // Ensuring name is not optional
+          const parameters: Parameter[] = (endpoint.parameters || []).map(param => ({
+            name: param.name || "",
             type: param.type || "string",
             description: param.description || "",
             required: param.required || false
@@ -149,21 +149,33 @@ const ApiGenerator = () => {
             requiresAuth: endpoint.requiresAuth || false,
             parameters: parameters,
             responseExample: endpoint.responseExample || "",
-          } as Endpoint;
+          };
         })
       };
+      
+      console.log("Generating HTML with data:", documentationData);
       
       // Generate HTML documentation with properly typed data
       const html = generateHtmlDocumentation(documentationData);
       setGeneratedHtml(html);
+      console.log("Generated HTML length:", html.length);
       
       toast({
         title: "API Documentation Generated",
         description: "Your API documentation has been generated successfully.",
       });
       
-      // Show preview automatically
+      // Switch to preview tab and show preview
+      setActiveTab("preview");
       setShowPreview(true);
+      
+      // Force a re-render by updating state
+      setTimeout(() => {
+        const previewTab = document.querySelector('[data-value="preview"]');
+        if (previewTab && previewTab instanceof HTMLElement) {
+          previewTab.click();
+        }
+      }, 100);
     } catch (err) {
       console.error("Error generating documentation:", err);
       toast({
@@ -263,6 +275,7 @@ const ApiGenerator = () => {
       if (apiSpec.openapi || apiSpec.swagger) {
         // Process OpenAPI spec and convert to our format
         const processedData = processOpenApiSpec(apiSpec);
+        console.log("Processed data:", processedData);
         
         // Set the form values
         form.reset(processedData);
@@ -270,13 +283,51 @@ const ApiGenerator = () => {
         toast({
           title: "API Specification Imported",
           description: `The API specification '${processedData.apiName}' has been successfully imported. Review and customize as needed.`,
-          variant: "success"
+          variant: "default"
         });
         
+        // Generate documentation right away
+        const documentationData: ApiDocumentation = {
+          apiName: processedData.apiName || "API Documentation",
+          baseUrl: processedData.baseUrl || "",
+          description: processedData.description || "",
+          version: processedData.version || "1.0.0",
+          endpoints: (processedData.endpoints || []).map(endpoint => {
+            // Ensure all parameters have required fields
+            const parameters: Parameter[] = (endpoint.parameters || []).map(param => ({
+              name: param.name || "",
+              type: param.type || "string",
+              description: param.description || "",
+              required: param.required || false
+            }));
+            
+            return {
+              method: endpoint.method,
+              path: endpoint.path || "/",
+              title: endpoint.title || "",
+              description: endpoint.description || "",
+              requiresAuth: endpoint.requiresAuth || false,
+              parameters: parameters,
+              responseExample: endpoint.responseExample || "",
+            };
+          })
+        };
+        
+        console.log("Generating HTML with imported data:", documentationData);
+        const html = generateHtmlDocumentation(documentationData);
+        setGeneratedHtml(html);
+        
         // Switch to the manual tab to show the imported data
-        document.querySelector('[data-state="inactive"][value="manual"]')?.dispatchEvent(
-          new MouseEvent('click', { bubbles: true })
-        );
+        setActiveTab("manual");
+        setTimeout(() => {
+          const manualTab = document.querySelector('[data-value="manual"]');
+          if (manualTab && manualTab instanceof HTMLElement) {
+            manualTab.click();
+          }
+        }, 100);
+        
+        // Update endpoint count
+        setEndpointCount(processedData.endpoints?.length || 1);
       } else {
         throw new Error("Unsupported API specification format. Only OpenAPI/Swagger is currently supported.");
       }
@@ -397,10 +448,11 @@ const ApiGenerator = () => {
           <div className="mx-auto max-w-4xl">
             <h1 className="text-3xl font-bold mb-8">Generate API Documentation</h1>
             
-            <Tabs defaultValue="url" className="mb-6">
-              <TabsList className="grid w-full grid-cols-2">
+            <Tabs value={activeTab} onValueChange={setActiveTab} defaultValue="url" className="mb-6">
+              <TabsList className="grid w-full grid-cols-3">
                 <TabsTrigger value="url">Import from URL</TabsTrigger>
                 <TabsTrigger value="manual">Create Manually</TabsTrigger>
+                {generatedHtml && <TabsTrigger value="preview" data-value="preview">Preview</TabsTrigger>}
               </TabsList>
               
               <TabsContent value="url" className="mt-4 space-y-4">
@@ -816,7 +868,7 @@ const ApiGenerator = () => {
                           Copy HTML Code
                         </Button>
                       </div>
-                      <DocPreview html={generatedHtml} />
+                      {generatedHtml && <DocPreview html={generatedHtml} />}
                     </CardContent>
                   </Card>
                 </TabsContent>
