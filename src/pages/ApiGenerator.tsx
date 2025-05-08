@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
@@ -34,7 +35,7 @@ import {
   Download,
   Code
 } from "lucide-react";
-import { processOpenApiSpec } from "@/lib/openapi-parser";
+import { processOpenApiSpec, ApiDocumentation } from "@/lib/openapi-parser";
 import { generateHtmlDocumentation } from "@/lib/documentation-generator";
 import DocPreview from "@/components/DocPreview";
 import {
@@ -125,8 +126,25 @@ const ApiGenerator = () => {
     console.log("Form data:", data);
     
     try {
-      // Generate HTML documentation
-      const html = generateHtmlDocumentation(data);
+      // Ensure all required properties are present to match ApiDocumentation interface
+      const documentationData: ApiDocumentation = {
+        apiName: data.apiName || "API Documentation", // Provide default if empty
+        baseUrl: data.baseUrl || "",
+        description: data.description || "",
+        version: data.version || "1.0.0",
+        endpoints: data.endpoints.map(endpoint => ({
+          method: endpoint.method,
+          path: endpoint.path,
+          title: endpoint.title,
+          description: endpoint.description,
+          requiresAuth: endpoint.requiresAuth,
+          parameters: endpoint.parameters || [],
+          responseExample: endpoint.responseExample || "",
+        }))
+      };
+      
+      // Generate HTML documentation with properly typed data
+      const html = generateHtmlDocumentation(documentationData);
       setGeneratedHtml(html);
       
       toast({
