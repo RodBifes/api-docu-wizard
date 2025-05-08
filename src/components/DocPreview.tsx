@@ -1,5 +1,5 @@
 
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import { Card } from "@/components/ui/card";
 
 interface DocPreviewProps {
@@ -7,13 +7,72 @@ interface DocPreviewProps {
 }
 
 const DocPreview: React.FC<DocPreviewProps> = ({ html }) => {
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  useEffect(() => {
+    // When the HTML content changes, ensure the iframe is resized properly
+    if (iframeRef.current) {
+      const iframe = iframeRef.current;
+      
+      // Function to adjust iframe height based on content
+      const resizeIframe = () => {
+        try {
+          const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+          if (iframeDoc) {
+            // Allow time for content to render
+            setTimeout(() => {
+              const height = iframeDoc.documentElement.scrollHeight;
+              iframe.style.height = `${height}px`;
+            }, 100);
+          }
+        } catch (e) {
+          console.error("Error resizing iframe:", e);
+        }
+      };
+
+      // Add load event to iframe
+      iframe.onload = resizeIframe;
+      
+      // Apply initial height after a short delay
+      setTimeout(resizeIframe, 200);
+    }
+  }, [html]);
+
   return (
     <Card className="overflow-hidden">
       <iframe
+        ref={iframeRef}
         srcDoc={html}
         title="Documentation Preview"
-        className="w-full h-[600px] border-0"
+        className="w-full min-h-[600px] border-0 transition-all duration-200"
         sandbox="allow-same-origin"
+        onLoad={(e) => {
+          // Add basic navigation within the iframe
+          try {
+            const iframe = e.currentTarget;
+            const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+            
+            if (iframeDoc) {
+              // Add click event listeners to anchor tags
+              const anchors = iframeDoc.querySelectorAll('a');
+              anchors.forEach(anchor => {
+                anchor.addEventListener('click', (e) => {
+                  const href = anchor.getAttribute('href');
+                  if (href && href.startsWith('#')) {
+                    e.preventDefault();
+                    const targetId = href.substring(1);
+                    const targetElement = iframeDoc.getElementById(targetId);
+                    if (targetElement) {
+                      targetElement.scrollIntoView({ behavior: 'smooth' });
+                    }
+                  }
+                });
+              });
+            }
+          } catch (e) {
+            console.error("Error setting up iframe navigation:", e);
+          }
+        }}
       />
     </Card>
   );

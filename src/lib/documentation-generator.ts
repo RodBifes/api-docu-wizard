@@ -1,4 +1,3 @@
-
 import { ApiDocumentation, Endpoint, Parameter } from "@/lib/openapi-parser";
 
 /**
@@ -159,12 +158,14 @@ export const generateHtmlDocumentation = (data: ApiDocumentation): string => {
       width: 100%;
       border-collapse: collapse;
       margin-bottom: 1.5rem;
+      table-layout: fixed;
     }
     
     th, td {
       text-align: left;
       padding: 0.75rem;
       border-bottom: 1px solid var(--border);
+      overflow-wrap: break-word;
     }
     
     th {
@@ -202,6 +203,67 @@ export const generateHtmlDocumentation = (data: ApiDocumentation): string => {
         align-items: flex-start;
       }
     }
+    
+    /* Add anchor link styles */
+    .endpoint-anchor {
+      scroll-margin-top: 2rem;
+    }
+    
+    /* Improve table styling */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 1.5rem;
+      table-layout: fixed;
+    }
+    
+    th, td {
+      text-align: left;
+      padding: 0.75rem;
+      border-bottom: 1px solid var(--border);
+      overflow-wrap: break-word;
+    }
+    
+    /* Add table of contents styles */
+    .toc {
+      background-color: var(--secondary);
+      padding: 1rem;
+      border-radius: var(--radius);
+      margin-bottom: 2rem;
+    }
+    
+    .toc-title {
+      margin-bottom: 0.5rem;
+    }
+    
+    .toc-list {
+      list-style: none;
+      padding-left: 0;
+    }
+    
+    .toc-item {
+      margin-bottom: 0.25rem;
+    }
+    
+    .toc-link {
+      color: var(--accent);
+      text-decoration: none;
+    }
+    
+    .toc-link:hover {
+      text-decoration: underline;
+    }
+    
+    .method-tag {
+      display: inline-block;
+      width: 60px;
+      text-align: center;
+      padding: 2px 4px;
+      border-radius: var(--radius);
+      font-weight: bold;
+      font-size: 0.75rem;
+      margin-right: 0.5rem;
+    }
   </style>
 </head>
 <body>
@@ -210,11 +272,28 @@ export const generateHtmlDocumentation = (data: ApiDocumentation): string => {
       <h1>${data.apiName}</h1>
       <div class="version">Version: ${data.version}</div>
       <div class="base-url">${data.baseUrl}</div>
-      <div class="description">${data.description}</div>
+      <div class="description">${data.description || 'No description provided.'}</div>
     </header>
     
+    <!-- Table of Contents -->
+    <div class="toc">
+      <h2 class="toc-title">API Endpoints</h2>
+      <ul class="toc-list">
+        ${data.endpoints.map((endpoint, index) => `
+          <li class="toc-item">
+            <a href="#endpoint-${index}" class="toc-link">
+              <span class="method-tag ${endpoint.method.toLowerCase()}">${endpoint.method}</span>
+              ${endpoint.path} - ${endpoint.title}
+            </a>
+          </li>
+        `).join('')}
+      </ul>
+    </div>
+    
     <div class="endpoints">
-      ${data.endpoints.map(endpoint => renderEndpoint(endpoint)).join('\n')}
+      ${data.endpoints.length > 0 
+        ? data.endpoints.map((endpoint, index) => renderEndpoint(endpoint, index)).join('\n')
+        : '<div class="no-endpoints">No endpoints defined.</div>'}
     </div>
     
     <footer>
@@ -231,18 +310,18 @@ export const generateHtmlDocumentation = (data: ApiDocumentation): string => {
 /**
  * Renders an endpoint as HTML
  */
-const renderEndpoint = (endpoint: Endpoint): string => {
+const renderEndpoint = (endpoint: Endpoint, index: number): string => {
   const methodClass = endpoint.method.toLowerCase();
   
   return `
-    <div class="endpoint">
+    <div id="endpoint-${index}" class="endpoint endpoint-anchor">
       <div class="endpoint-header">
         <div class="method ${methodClass}">${endpoint.method}</div>
         <div class="path">${endpoint.path}</div>
       </div>
       <div class="endpoint-content">
-        <h2 class="endpoint-title">${endpoint.title}</h2>
-        <div class="endpoint-description">${endpoint.description}</div>
+        <h2 class="endpoint-title">${endpoint.title || 'Untitled Endpoint'}</h2>
+        <div class="endpoint-description">${endpoint.description || 'No description available.'}</div>
         
         ${endpoint.requiresAuth ? '<div class="auth-required">Requires Authentication</div>' : ''}
         
@@ -251,22 +330,22 @@ const renderEndpoint = (endpoint: Endpoint): string => {
           <table>
             <thead>
               <tr>
-                <th>Name</th>
-                <th>Type</th>
-                <th>Description</th>
-                <th>Required</th>
+                <th width="20%">Name</th>
+                <th width="15%">Type</th>
+                <th width="15%">Required</th>
+                <th width="50%">Description</th>
               </tr>
             </thead>
             <tbody>
               ${endpoint.parameters.map(param => renderParameter(param)).join('')}
             </tbody>
           </table>
-        ` : ''}
+        ` : '<p>No parameters required.</p>'}
         
         ${endpoint.responseExample ? `
           <h3 class="response-title">Response Example</h3>
           <pre class="response-example">${formatJson(endpoint.responseExample)}</pre>
-        ` : ''}
+        ` : '<p>No response example available.</p>'}
       </div>
     </div>
   `;
@@ -278,10 +357,10 @@ const renderEndpoint = (endpoint: Endpoint): string => {
 const renderParameter = (param: Parameter): string => {
   return `
     <tr>
-      <td>${param.name}</td>
-      <td>${param.type}</td>
-      <td>${param.description}</td>
+      <td><strong>${param.name || ''}</strong></td>
+      <td><code>${param.type || 'string'}</code></td>
       <td>${param.required ? '<span class="required">Required</span>' : 'Optional'}</td>
+      <td>${param.description || 'No description available.'}</td>
     </tr>
   `;
 };
@@ -291,11 +370,16 @@ const renderParameter = (param: Parameter): string => {
  */
 const formatJson = (jsonString: string): string => {
   try {
-    // Parse and then stringify with indentation
-    const parsed = JSON.parse(jsonString);
+    // Try to parse JSON string
+    const parsed = typeof jsonString === 'string' ? JSON.parse(jsonString) : jsonString;
     return JSON.stringify(parsed, null, 2);
   } catch (e) {
-    // If parsing fails, just return the original string
-    return jsonString;
+    // If parsing fails, just return the original string with escaping
+    return jsonString
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
   }
 };
